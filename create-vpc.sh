@@ -3,47 +3,50 @@
 set -eu
 
 # Variables
-region="us-west-2"
-vpc_cidr="10.0.0.0/16"
-subnet_cidr="10.0.1.0/24"
-key_name="bcitkey"
+REGION="us-west-2"
+VPC_CIDR="10.0.0.0/16"
+SUBNET_CIDR="10.0.1.0/24"
 
-# Create VPC
-vpc_id=$(aws ec2 create-vpc --cidr-block $vpc_cidr --query 'Vpc.VpcId' --output text --region $region)
-aws ec2 create-tags --resources $vpc_id --tags Key=Name,Value=MyVPC --region $region
+# Create a VPC
+VPC_ID=$(aws ec2 create-vpc --cidr-block $VPC_CIDR --query 'Vpc.VpcId' --output text --region $REGION)
+echo "VPC created with ID: $VPC_ID"
 
-# enable dns hostname
-aws ec2 modify-vpc-attribute --vpc-id $vpc_id --enable-dns-hostnames Value=true
+# Add a Name tag to the VPC
+aws ec2 create-tags --resources $VPC_ID --tags Key=Name,Value=MyVPC --region $REGION
 
-# Create public subnet
-subnet_id=$(aws ec2 create-subnet --vpc-id $vpc_id \
-  --cidr-block $subnet_cidr \
-  --availability-zone ${region}a \
-  --query 'Subnet.SubnetId' \
-  --output text --region $region)
+# Enable DNS hostname resolution for the VPC
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames '{"Value":true}'
 
-aws ec2 create-tags --resources $subnet_id --tags Key=Name,Value=PublicSubnet --region $region
+# Create a public subnet
+SUBNET_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID \
+  --cidr-block $SUBNET_CIDR \
+  --availability-zone ${REGION}a \
+  --query 'Subnet.SubnetId' --output text --region $REGION)
+echo "Subnet created with ID: $SUBNET_ID"
 
-# Create internet gateway
-igw_id=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' \
-  --output text --region $region)
+# Enable auto-assign public IPs for the subnet
+aws ec2 modify-subnet-attribute --subnet-id $SUBNET_ID --map-public-ip-on-launch
 
-aws ec2 attach-internet-gateway --vpc-id $vpc_id --internet-gateway-id $igw_id --region $region
+# Create an Internet Gateway
+IGW_ID=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text --region $REGION)
+echo "Internet Gateway created with ID: $IGW_ID"
 
-# Create route table
-route_table_id=$(aws ec2 create-route-table --vpc-id $vpc_id \
-  --query 'RouteTable.RouteTableId' \
-  --region $region \
-  --output text)
+# Attach the Internet Gateway to the VPC
+aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID --region $REGION
 
-# Associate route table with public subnet
-aws ec2 associate-route-table --subnet-id $subnet_id --route-table-id $route_table_id --region $region
+# Create a route table for the VPC
+ROUTE_TABLE_ID=$(aws ec2 create-route-table --vpc-id $VPC_ID --query 'RouteTable.RouteTableId' --output text --region $REGION)
+echo "Route Table created with ID: $ROUTE_TABLE_ID"
 
-# Create route to the internet via the internet gateway
-aws ec2 create-route --route-table-id $route_table_id \
-  --destination-cidr-block 0.0.0.0/0 --gateway-id $igw_id --region $region
+# Create a route to the Internet Gateway
+aws ec2 create-route --route-table-id $ROUTE_TABLE_ID \
+  --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_ID --region $REGION
 
-# Write infrastructure data to a file
-echo "vpc_id=${vpc_id}" > infrastructure_data
-echo "subnet_id=${subnet_id}" >> infrastructure_data
+# Associate the route table with the public subnet
+aws ec2 associate-route-table --subnet-id $SUBNET_ID --route-table-id $ROUTE_TABLE_ID --region $REGION
 
+# Write VPC and Subnet IDs to a file for later use
+echo "vpc_id=${VPC_ID}" > infrastructure_data
+echo "subnet_id=${SUBNET_ID}" >> infrastructure_data
+
+echo "VPC and subnet setup complete!"

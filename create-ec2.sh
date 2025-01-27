@@ -7,12 +7,11 @@ key_name="bcitkey"
 
 source ./infrastructure_data
 
-# Get Ubuntu 23.04 image id owned by amazon
+# Get Ubuntu 23.04 image ID owned by Amazon
 ubuntu_ami=$(aws ec2 describe-images --region $region \
  --owners amazon \
  --filters Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server* \
  --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text)
-
 
 # Create security group allowing SSH and HTTP from anywhere
 security_group_id=$(aws ec2 create-security-group --group-name MySecurityGroup \
@@ -27,16 +26,31 @@ aws ec2 authorize-security-group-ingress --group-id $security_group_id \
  --protocol tcp --port 80 --cidr 0.0.0.0/0 --region $region
 
 # Launch an EC2 instance in the public subnet
-# COMPLETE THIS PART
-instance_id=
+instance_id=$(aws ec2 run-instances \
+    --image-id "$ubuntu_ami" \
+    --count 1 \
+    --instance-type t2.micro \
+    --key-name "$key_name" \
+    --security-group-ids "$security_group_id" \
+    --subnet-id "$subnet_id" \
+    --region "$region" \
+    --query 'Instances[0].InstanceId' \
+    --output text)
 
-# wait for ec2 instance to be running
-aws ec2 wait instance-running --instance-ids $instance_id
+echo "Instance $instance_id created successfully."
+
+# Wait for EC2 instance to be running
+aws ec2 wait instance-running --instance-ids "$instance_id" --region "$region"
 
 # Get the public IP address of the EC2 instance
-# COMPLETE THIS PART
-public_ip=
+public_ip=$(aws ec2 describe-instances \
+    --instance-ids "$instance_id" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+    --region "$region" \
+    --output text)
 
 # Write instance data to a file
-# COMPLETE THIS PART
-echo "Public IP: $public_ip" 
+echo "instance_id=${instance_id}" > instance_data
+echo "public_ip=${public_ip}" >> instance_data
+
+echo "Instance public IP: $public_ip"
